@@ -1,239 +1,213 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Stack Builder - Bentuk Balok</title>
-<link rel="manifest" href="manifest.json" />
-<meta name="theme-color" content="#222" />
-<link rel="icon" href="icons/icon2048-192x192.png" />
-<style>
-  body {
-    margin: 0; font-family: sans-serif; background: #111; color: #fff; overflow: hidden;
-  }
-  #score {
-    position: fixed; top: 10px; left: 10px; font-size: 20px; z-index: 10;
-  }
-  canvas {
-    display: block; margin: 0 auto; background: #222; border: 2px solid #444;
-    image-rendering: pixelated;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stack Swipe Game</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#222" />
+  <link rel="icon" href="icons/icon2048-192x192.png" />
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      font-family: sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+      color: white;
+      z-index: 10;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #222;
+      touch-action: none;
+    }
+  </style>
 </head>
 <body>
-<div id="score">Score: 0</div>
-<canvas id="gameCanvas" width="320" height="480"></canvas>
+  <div id="score">Score: 0</div>
+  <canvas id="gameCanvas" width="320" height="480"></canvas>
 
 <script>
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
-  const blockSize = 32;
-  const cols = canvas.width / blockSize; // 10
-  const rows = canvas.height / blockSize; // 15
-  let grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
-  let score = 0;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const blockSize = 32;
+const cols = canvas.width / blockSize;
+const rows = canvas.height / blockSize;
+let grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
+let score = 0;
 
-  // Bentuk balok (Tetris-like shapes) di matriks 4x4
-  const SHAPES = [
-    // I (panjang 4)
-    [
-      [0,0,0,0],
-      [1,1,1,1],
-      [0,0,0,0],
-      [0,0,0,0]
-    ],
-    // O (kotak 2x2)
-    [
-      [1,1],
-      [1,1]
-    ],
-    // T
-    [
-      [0,1,0],
-      [1,1,1],
-      [0,0,0]
-    ],
-    // L
-    [
-      [1,0,0],
-      [1,1,1],
-      [0,0,0]
-    ],
-    // J
-    [
-      [0,0,1],
-      [1,1,1],
-      [0,0,0]
-    ]
-  ];
+const SHAPES = [
+  [[1,1,1,1]],
+  [[1,1],[1,1]],
+  [[0,1,0],[1,1,1]],
+  [[1,0,0],[1,1,1]],
+  [[0,0,1],[1,1,1]]
+];
+const COLORS = ['#09f','#fc0','#f3f','#f70','#0ff'];
 
-  // Warna balok
-  const COLORS = [
-    'hsl(200, 80%, 60%)', // biru muda
-    'hsl(40, 90%, 60%)',  // kuning
-    'hsl(300, 70%, 70%)', // ungu
-    'hsl(30, 90%, 55%)',  // oranye
-    'hsl(180, 80%, 60%)'  // cyan
-  ];
+let currentBlock;
 
-  // Current block object
-  let currentBlock = {
-    shape: null,
-    color: null,
-    x: 0,
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playTone(freq) {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.value = freq;
+  o.type = 'square';
+  g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  o.start(); o.stop(audioCtx.currentTime + 0.1);
+}
+
+function createBlock() {
+  const i = Math.floor(Math.random() * SHAPES.length);
+  return {
+    shape: SHAPES[i],
+    color: COLORS[i],
+    x: Math.floor(cols / 2 - SHAPES[i][0].length / 2),
     y: 0
   };
+}
 
-  // Audio context for tone
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  function playTone(freq) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    osc.type = 'square';
-    osc.frequency.value = freq;
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.12);
-  }
-
-  function createBlock() {
-    const idx = Math.floor(Math.random() * SHAPES.length);
-    return {
-      shape: SHAPES[idx],
-      color: COLORS[idx],
-      x: Math.floor(cols/2) - Math.floor(SHAPES[idx][0].length/2),
-      y: 0
-    };
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Gambar grid
-    for(let y=0; y<rows; y++) {
-      for(let x=0; x<cols; x++) {
-        if(grid[y][x]) {
-          ctx.fillStyle = grid[y][x];
-          ctx.fillRect(x*blockSize, y*blockSize, blockSize, blockSize);
-          ctx.strokeStyle = '#333';
-          ctx.strokeRect(x*blockSize, y*blockSize, blockSize, blockSize);
-        }
-      }
-    }
-    // Gambar current block
-    const shape = currentBlock.shape;
-    for(let y=0; y<shape.length; y++) {
-      for(let x=0; x<shape[y].length; x++) {
-        if(shape[y][x]) {
-          ctx.fillStyle = currentBlock.color;
-          ctx.fillRect((currentBlock.x + x)*blockSize, (currentBlock.y + y)*blockSize, blockSize, blockSize);
-          ctx.strokeStyle = '#fff';
-          ctx.strokeRect((currentBlock.x + x)*blockSize, (currentBlock.y + y)*blockSize, blockSize, blockSize);
-        }
-      }
-    }
-  }
-
-  function collision(xOffset=0, yOffset=0, shape=currentBlock.shape, posX=currentBlock.x, posY=currentBlock.y) {
-    for(let y=0; y<shape.length; y++) {
-      for(let x=0; x<shape[y].length; x++) {
-        if(shape[y][x]) {
-          let newX = posX + x + xOffset;
-          let newY = posY + y + yOffset;
-          if(newX < 0 || newX >= cols || newY >= rows) return true;
-          if(newY >= 0 && grid[newY][newX]) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  function placeBlock() {
-    const shape = currentBlock.shape;
-    for(let y=0; y<shape.length; y++) {
-      for(let x=0; x<shape[y].length; x++) {
-        if(shape[y][x]) {
-          grid[currentBlock.y + y][currentBlock.x + x] = currentBlock.color;
-        }
-      }
-    }
-    playTone(300 + currentBlock.y * 15);
-  }
-
-  function clearFullRows() {
-    let rowsCleared = 0;
-    for(let y=rows -1; y>=0; y--) {
-      if(grid[y].every(cell => cell !== 0)) {
-        grid.splice(y,1);
-        grid.unshift(Array(cols).fill(0));
-        rowsCleared++;
-        y++; // ulang cek baris baru yang turun
-      }
-    }
-    if(rowsCleared > 0) {
-      score += rowsCleared * 10;
-      document.getElementById('score').textContent = 'Score: ' + score;
-      playTone(800);
-    }
-  }
-
-  function gameOver() {
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for(let y=0; y<rows; y++) {
     for(let x=0; x<cols; x++) {
-      if(grid[0][x] !== 0) return true;
+      if(grid[y][x]) {
+        ctx.fillStyle = grid[y][x];
+        ctx.fillRect(x*blockSize, y*blockSize, blockSize, blockSize);
+      }
     }
-    return false;
   }
+  const s = currentBlock.shape;
+  for(let y=0; y<s.length; y++) {
+    for(let x=0; x<s[y].length; x++) {
+      if(s[y][x]) {
+        ctx.fillStyle = currentBlock.color;
+        ctx.fillRect((currentBlock.x+x)*blockSize, (currentBlock.y+y)*blockSize, blockSize, blockSize);
+      }
+    }
+  }
+}
 
-  function resetGame() {
-    grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
-    score = 0;
-    document.getElementById('score').textContent = 'Score: 0';
+function collision(dx=0, dy=0) {
+  const s = currentBlock.shape;
+  for(let y=0; y<s.length; y++) {
+    for(let x=0; x<s[y].length; x++) {
+      if(s[y][x]) {
+        let nx = currentBlock.x + x + dx;
+        let ny = currentBlock.y + y + dy;
+        if(nx < 0 || nx >= cols || ny >= rows || (ny >= 0 && grid[ny][nx])) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function placeBlock() {
+  const s = currentBlock.shape;
+  for(let y=0; y<s.length; y++) {
+    for(let x=0; x<s[y].length; x++) {
+      if(s[y][x]) {
+        grid[currentBlock.y + y][currentBlock.x + x] = currentBlock.color;
+      }
+    }
+  }
+  playTone(300 + currentBlock.y * 10);
+}
+
+function clearRows() {
+  let cleared = 0;
+  for(let y=rows - 1; y >= 0; y--) {
+    if(grid[y].every(c => c)) {
+      grid.splice(y,1);
+      grid.unshift(Array(cols).fill(0));
+      cleared++;
+      y++;
+    }
+  }
+  if(cleared > 0) {
+    score += cleared * 10;
+    document.getElementById('score').textContent = 'Score: ' + score;
+    playTone(700);
+  }
+}
+
+function resetGame() {
+  grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
+  score = 0;
+  document.getElementById('score').textContent = 'Score: 0';
+  currentBlock = createBlock();
+}
+
+function gameOver() {
+  return currentBlock.y === 0 && collision(0,0);
+}
+
+function tick() {
+  if(!collision(0,1)) {
+    currentBlock.y++;
+  } else {
+    placeBlock();
+    clearRows();
+    if(gameOver()) {
+      alert('Game Over! Skor: ' + score);
+      resetGame();
+    }
     currentBlock = createBlock();
   }
+  draw();
+}
 
-  function tick() {
-    if(!collision(0,1)) {
-      currentBlock.y++;
-    } else {
-      placeBlock();
-      clearFullRows();
-      if(gameOver()) {
-        alert('Game Over!\nSkor Anda: ' + score);
-        resetGame();
-        return;
-      }
-      currentBlock = createBlock();
-    }
-    draw();
+function moveLeft() {
+  if(!collision(-1,0)) currentBlock.x--;
+  draw();
+}
+function moveRight() {
+  if(!collision(1,0)) currentBlock.x++;
+  draw();
+}
+function softDrop() {
+  tick();
+}
+
+// ───── Swipe Gesture ─────
+let startX, startY;
+canvas.addEventListener('touchstart', e => {
+  const touch = e.touches[0];
+  startX = touch.clientX;
+  startY = touch.clientY;
+}, {passive: true});
+
+canvas.addEventListener('touchend', e => {
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - startX;
+  const dy = touch.clientY - startY;
+
+  if(Math.abs(dx) > Math.abs(dy)) {
+    if(dx > 30) moveRight();
+    else if(dx < -30) moveLeft();
+  } else {
+    if(dy > 30) softDrop();
   }
+}, {passive: true});
 
-  window.addEventListener('keydown', e => {
-    if(e.key === 'ArrowLeft') {
-      if(!collision(-1,0)) {
-        currentBlock.x--;
-        draw();
-      }
-    } else if(e.key === 'ArrowRight') {
-      if(!collision(1,0)) {
-        currentBlock.x++;
-        draw();
-      }
-    } else if(e.key === 'ArrowDown') {
-      // Percepatan jatuh
-      tick();
-    }
-  });
-
-  resetGame();
-  setInterval(tick, 700);
+// ───── Start Game ─────
+resetGame();
+setInterval(tick, 700);
 </script>
 
 <script>
-  if('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker terdaftar'));
-  }
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
 </script>
 </body>
 </html>

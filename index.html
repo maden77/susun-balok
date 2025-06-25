@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stack Builder</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#222">
+  <link rel="icon" href="icons/icon2048-192x192.png">
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #111;
+      color: #fff;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #222;
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="score">Score: 0</div>
+  <canvas id="gameCanvas" width="320" height="480"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const blockSize = 32;
+    const cols = canvas.width / blockSize;
+    const rows = canvas.height / blockSize;
+    let grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+    let score = 0;
+    let current = { x: Math.floor(cols / 2), y: 0, color: getRandomColor() };
+
+    const audio = new AudioContext();
+    function playTone(freq) {
+      const o = audio.createOscillator();
+      const g = audio.createGain();
+      o.connect(g);
+      g.connect(audio.destination);
+      o.frequency.value = freq;
+      o.type = 'square';
+      o.start();
+      o.stop(audio.currentTime + 0.1);
+    }
+
+    function getRandomColor() {
+      return `hsl(${Math.random() * 360}, 70%, 60%)`;
+    }
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          if (grid[y][x]) {
+            ctx.fillStyle = grid[y][x];
+            ctx.fillRect(x * blockSize, y * blockSize, blockSize, blockSize);
+          }
+        }
+      }
+      ctx.fillStyle = current.color;
+      ctx.fillRect(current.x * blockSize, current.y * blockSize, blockSize, blockSize);
+    }
+
+    function mergeBlock() {
+      grid[current.y][current.x] = current.color;
+      playTone(300 + (current.y * 10));
+    }
+
+    function clearRows() {
+      for (let y = rows - 1; y >= 0; y--) {
+        if (grid[y].every(c => c)) {
+          grid.splice(y, 1);
+          grid.unshift(Array(cols).fill(0));
+          score += 10;
+          document.getElementById("score").textContent = `Score: ${score}`;
+          playTone(800);
+        }
+      }
+    }
+
+    function tick() {
+      current.y++;
+      if (current.y >= rows || grid[current.y][current.x]) {
+        current.y--;
+        mergeBlock();
+        clearRows();
+        current = { x: Math.floor(cols / 2), y: 0, color: getRandomColor() };
+        if (grid[0][current.x]) {
+          alert("Game Over\\nSkor Anda: " + score);
+          grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+          score = 0;
+          document.getElementById("score").textContent = `Score: ${score}`;
+        }
+      }
+      drawGrid();
+    }
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "ArrowLeft" && current.x > 0 && !grid[current.y][current.x - 1]) current.x--;
+      if (e.key === "ArrowRight" && current.x < cols - 1 && !grid[current.y][current.x + 1]) current.x++;
+      drawGrid();
+    });
+
+    setInterval(tick, 500);
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>

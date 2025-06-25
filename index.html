@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Stack Builder - PWA</title>
+<title>Stack Builder - Bentuk Balok</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#222" />
 <link rel="icon" href="icons/icon2048-192x192.png" />
@@ -33,14 +33,61 @@
   let grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
   let score = 0;
 
-  let current = { x: Math.floor(cols / 2), y: 0, color: randomColor() };
+  // Bentuk balok (Tetris-like shapes) di matriks 4x4
+  const SHAPES = [
+    // I (panjang 4)
+    [
+      [0,0,0,0],
+      [1,1,1,1],
+      [0,0,0,0],
+      [0,0,0,0]
+    ],
+    // O (kotak 2x2)
+    [
+      [1,1],
+      [1,1]
+    ],
+    // T
+    [
+      [0,1,0],
+      [1,1,1],
+      [0,0,0]
+    ],
+    // L
+    [
+      [1,0,0],
+      [1,1,1],
+      [0,0,0]
+    ],
+    // J
+    [
+      [0,0,1],
+      [1,1,1],
+      [0,0,0]
+    ]
+  ];
+
+  // Warna balok
+  const COLORS = [
+    'hsl(200, 80%, 60%)', // biru muda
+    'hsl(40, 90%, 60%)',  // kuning
+    'hsl(300, 70%, 70%)', // ungu
+    'hsl(30, 90%, 55%)',  // oranye
+    'hsl(180, 80%, 60%)'  // cyan
+  ];
+
+  // Current block object
+  let currentBlock = {
+    shape: null,
+    color: null,
+    x: 0,
+    y: 0
+  };
 
   // Audio context for tone
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   function playTone(freq) {
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     osc.connect(gainNode);
@@ -52,13 +99,19 @@
     osc.stop(audioCtx.currentTime + 0.12);
   }
 
-  function randomColor() {
-    return `hsl(${Math.random()*360}, 70%, 60%)`;
+  function createBlock() {
+    const idx = Math.floor(Math.random() * SHAPES.length);
+    return {
+      shape: SHAPES[idx],
+      color: COLORS[idx],
+      x: Math.floor(cols/2) - Math.floor(SHAPES[idx][0].length/2),
+      y: 0
+    };
   }
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Draw stacked blocks
+    // Gambar grid
     for(let y=0; y<rows; y++) {
       for(let x=0; x<cols; x++) {
         if(grid[y][x]) {
@@ -69,26 +122,54 @@
         }
       }
     }
-    // Draw current falling block
-    ctx.fillStyle = current.color;
-    ctx.fillRect(current.x*blockSize, current.y*blockSize, blockSize, blockSize);
-    ctx.strokeStyle = '#fff';
-    ctx.strokeRect(current.x*blockSize, current.y*blockSize, blockSize, blockSize);
+    // Gambar current block
+    const shape = currentBlock.shape;
+    for(let y=0; y<shape.length; y++) {
+      for(let x=0; x<shape[y].length; x++) {
+        if(shape[y][x]) {
+          ctx.fillStyle = currentBlock.color;
+          ctx.fillRect((currentBlock.x + x)*blockSize, (currentBlock.y + y)*blockSize, blockSize, blockSize);
+          ctx.strokeStyle = '#fff';
+          ctx.strokeRect((currentBlock.x + x)*blockSize, (currentBlock.y + y)*blockSize, blockSize, blockSize);
+        }
+      }
+    }
+  }
+
+  function collision(xOffset=0, yOffset=0, shape=currentBlock.shape, posX=currentBlock.x, posY=currentBlock.y) {
+    for(let y=0; y<shape.length; y++) {
+      for(let x=0; x<shape[y].length; x++) {
+        if(shape[y][x]) {
+          let newX = posX + x + xOffset;
+          let newY = posY + y + yOffset;
+          if(newX < 0 || newX >= cols || newY >= rows) return true;
+          if(newY >= 0 && grid[newY][newX]) return true;
+        }
+      }
+    }
+    return false;
   }
 
   function placeBlock() {
-    grid[current.y][current.x] = current.color;
-    playTone(300 + current.y * 15);
+    const shape = currentBlock.shape;
+    for(let y=0; y<shape.length; y++) {
+      for(let x=0; x<shape[y].length; x++) {
+        if(shape[y][x]) {
+          grid[currentBlock.y + y][currentBlock.x + x] = currentBlock.color;
+        }
+      }
+    }
+    playTone(300 + currentBlock.y * 15);
   }
 
   function clearFullRows() {
     let rowsCleared = 0;
-    for(let y = rows -1; y >=0; y--) {
-      if(grid[y].every(c => c !== 0)) {
+    for(let y=rows -1; y>=0; y--) {
+      if(grid[y].every(cell => cell !== 0)) {
         grid.splice(y,1);
         grid.unshift(Array(cols).fill(0));
         rowsCleared++;
-        y++; // check new row that shifted down
+        y++; // ulang cek baris baru yang turun
       }
     }
     if(rowsCleared > 0) {
@@ -98,7 +179,7 @@
     }
   }
 
-  function gameOverCheck() {
+  function gameOver() {
     for(let x=0; x<cols; x++) {
       if(grid[0][x] !== 0) return true;
     }
@@ -109,48 +190,49 @@
     grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
     score = 0;
     document.getElementById('score').textContent = 'Score: 0';
-    current = { x: Math.floor(cols / 2), y: 0, color: randomColor() };
+    currentBlock = createBlock();
   }
 
   function tick() {
-    current.y++;
-    if(current.y >= rows || grid[current.y][current.x]) {
-      current.y--;
+    if(!collision(0,1)) {
+      currentBlock.y++;
+    } else {
       placeBlock();
       clearFullRows();
-      if(gameOverCheck()) {
+      if(gameOver()) {
         alert('Game Over!\nSkor Anda: ' + score);
         resetGame();
-      } else {
-        current = { x: Math.floor(cols / 2), y: 0, color: randomColor() };
+        return;
       }
+      currentBlock = createBlock();
     }
     draw();
   }
 
   window.addEventListener('keydown', e => {
     if(e.key === 'ArrowLeft') {
-      if(current.x > 0 && !grid[current.y][current.x - 1]) {
-        current.x--;
+      if(!collision(-1,0)) {
+        currentBlock.x--;
         draw();
       }
     } else if(e.key === 'ArrowRight') {
-      if(current.x < cols - 1 && !grid[current.y][current.x + 1]) {
-        current.x++;
+      if(!collision(1,0)) {
+        currentBlock.x++;
         draw();
       }
+    } else if(e.key === 'ArrowDown') {
+      // Percepatan jatuh
+      tick();
     }
   });
 
-  draw();
-  setInterval(tick, 600);
+  resetGame();
+  setInterval(tick, 700);
 </script>
 
 <script>
   if('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
-    .then(() => console.log('Service Worker registered'))
-    .catch(console.error);
+    navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker terdaftar'));
   }
 </script>
 </body>

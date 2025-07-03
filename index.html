@@ -1,213 +1,487 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stack Swipe Game</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#222" />
-  <link rel="icon" href="icons/icon2048-192x192.png" />
-  <style>
-    body {
-      margin: 0;
-      background: #111;
-      font-family: sans-serif;
-      overflow: hidden;
-      touch-action: none;
-    }
-    #score {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      font-size: 18px;
-      color: white;
-      z-index: 10;
-    }
-    canvas {
-      display: block;
-      margin: 0 auto;
-      background: #222;
-      touch-action: none;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlockCraft PWA</title>
+    <meta name="description" content="A simple Minecraft-like PWA game">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #87CEEB;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #blockSelector {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 10px;
+        }
+        
+        .blockOption {
+            width: 40px;
+            height: 40px;
+            margin: 0 5px;
+            border: 2px solid transparent;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .blockOption.selected {
+            border-color: white;
+        }
+        
+        #inventory {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            margin: 5px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #installBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: none;
+        }
+    </style>
 </head>
 <body>
-  <div id="score">Score: 0</div>
-  <canvas id="gameCanvas" width="320" height="480"></canvas>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="blockSelector">
+            <div class="blockOption selected" data-block="grass" style="background-color: #5A8F3D;"></div>
+            <div class="blockOption" data-block="dirt" style="background-color: #8B5A2B;"></div>
+            <div class="blockOption" data-block="stone" style="background-color: #808080;"></div>
+            <div class="blockOption" data-block="wood" style="background-color: #8B4513;"></div>
+            <div class="blockOption" data-block="leaf" style="background-color: #4F7942;"></div>
+        </div>
+        
+        <div id="inventory">
+            <h3>Inventory</h3>
+            <div id="inventoryItems"></div>
+        </div>
+        
+        <div id="controls">
+            <button class="control-btn" id="jumpBtn">↑</button>
+            <div style="display: flex;">
+                <button class="control-btn" id="leftBtn">←</button>
+                <button class="control-btn" id="rightBtn">→</button>
+            </div>
+        </div>
+        
+        <button id="installBtn">Install Game</button>
+    </div>
 
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const blockSize = 32;
-const cols = canvas.width / blockSize;
-const rows = canvas.height / blockSize;
-let grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
-let score = 0;
+    <script>
+        // PWA Installation
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block';
+        });
+        
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    installBtn.style.display = 'none';
+                }
+                deferredPrompt = null;
+            }
+        });
+        
+        window.addEventListener('appinstalled', () => {
+            installBtn.style.display = 'none';
+            deferredPrompt = null;
+        });
 
-const SHAPES = [
-  [[1,1,1,1]],
-  [[1,1],[1,1]],
-  [[0,1,0],[1,1,1]],
-  [[1,0,0],[1,1,1]],
-  [[0,0,1],[1,1,1]]
-];
-const COLORS = ['#09f','#fc0','#f3f','#f70','#0ff'];
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful');
+                }).catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
 
-let currentBlock;
-
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playTone(freq) {
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  o.connect(g); g.connect(audioCtx.destination);
-  o.frequency.value = freq;
-  o.type = 'square';
-  g.gain.setValueAtTime(0.1, audioCtx.currentTime);
-  o.start(); o.stop(audioCtx.currentTime + 0.1);
-}
-
-function createBlock() {
-  const i = Math.floor(Math.random() * SHAPES.length);
-  return {
-    shape: SHAPES[i],
-    color: COLORS[i],
-    x: Math.floor(cols / 2 - SHAPES[i][0].length / 2),
-    y: 0
-  };
-}
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for(let y=0; y<rows; y++) {
-    for(let x=0; x<cols; x++) {
-      if(grid[y][x]) {
-        ctx.fillStyle = grid[y][x];
-        ctx.fillRect(x*blockSize, y*blockSize, blockSize, blockSize);
-      }
-    }
-  }
-  const s = currentBlock.shape;
-  for(let y=0; y<s.length; y++) {
-    for(let x=0; x<s[y].length; x++) {
-      if(s[y][x]) {
-        ctx.fillStyle = currentBlock.color;
-        ctx.fillRect((currentBlock.x+x)*blockSize, (currentBlock.y+y)*blockSize, blockSize, blockSize);
-      }
-    }
-  }
-}
-
-function collision(dx=0, dy=0) {
-  const s = currentBlock.shape;
-  for(let y=0; y<s.length; y++) {
-    for(let x=0; x<s[y].length; x++) {
-      if(s[y][x]) {
-        let nx = currentBlock.x + x + dx;
-        let ny = currentBlock.y + y + dy;
-        if(nx < 0 || nx >= cols || ny >= rows || (ny >= 0 && grid[ny][nx])) return true;
-      }
-    }
-  }
-  return false;
-}
-
-function placeBlock() {
-  const s = currentBlock.shape;
-  for(let y=0; y<s.length; y++) {
-    for(let x=0; x<s[y].length; x++) {
-      if(s[y][x]) {
-        grid[currentBlock.y + y][currentBlock.x + x] = currentBlock.color;
-      }
-    }
-  }
-  playTone(300 + currentBlock.y * 10);
-}
-
-function clearRows() {
-  let cleared = 0;
-  for(let y=rows - 1; y >= 0; y--) {
-    if(grid[y].every(c => c)) {
-      grid.splice(y,1);
-      grid.unshift(Array(cols).fill(0));
-      cleared++;
-      y++;
-    }
-  }
-  if(cleared > 0) {
-    score += cleared * 10;
-    document.getElementById('score').textContent = 'Score: ' + score;
-    playTone(700);
-  }
-}
-
-function resetGame() {
-  grid = Array(rows).fill(null).map(() => Array(cols).fill(0));
-  score = 0;
-  document.getElementById('score').textContent = 'Score: 0';
-  currentBlock = createBlock();
-}
-
-function gameOver() {
-  return currentBlock.y === 0 && collision(0,0);
-}
-
-function tick() {
-  if(!collision(0,1)) {
-    currentBlock.y++;
-  } else {
-    placeBlock();
-    clearRows();
-    if(gameOver()) {
-      alert('Game Over! Skor: ' + score);
-      resetGame();
-    }
-    currentBlock = createBlock();
-  }
-  draw();
-}
-
-function moveLeft() {
-  if(!collision(-1,0)) currentBlock.x--;
-  draw();
-}
-function moveRight() {
-  if(!collision(1,0)) currentBlock.x++;
-  draw();
-}
-function softDrop() {
-  tick();
-}
-
-// ───── Swipe Gesture ─────
-let startX, startY;
-canvas.addEventListener('touchstart', e => {
-  const touch = e.touches[0];
-  startX = touch.clientX;
-  startY = touch.clientY;
-}, {passive: true});
-
-canvas.addEventListener('touchend', e => {
-  const touch = e.changedTouches[0];
-  const dx = touch.clientX - startX;
-  const dy = touch.clientY - startY;
-
-  if(Math.abs(dx) > Math.abs(dy)) {
-    if(dx > 30) moveRight();
-    else if(dx < -30) moveLeft();
-  } else {
-    if(dy > 30) softDrop();
-  }
-}, {passive: true});
-
-// ───── Start Game ─────
-resetGame();
-setInterval(tick, 700);
-</script>
-
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js');
-}
-</script>
+        // Game Code
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // Game variables
+        const BLOCK_SIZE = 40;
+        const GRAVITY = 0.5;
+        const JUMP_FORCE = -10;
+        const MOVEMENT_SPEED = 5;
+        
+        let player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            width: 30,
+            height: 60,
+            velocityY: 0,
+            velocityX: 0,
+            isJumping: false,
+            selectedBlock: 'grass'
+        };
+        
+        let world = {};
+        let inventory = {
+            grass: 99,
+            dirt: 99,
+            stone: 99,
+            wood: 99,
+            leaf: 99
+        };
+        
+        // Generate simple terrain
+        function generateTerrain() {
+            const groundLevel = Math.floor(canvas.height / BLOCK_SIZE / 2) + 5;
+            
+            for (let x = -20; x < 20; x++) {
+                // Ground layers
+                world[`${x},${groundLevel}`] = 'grass';
+                world[`${x},${groundLevel + 1}`] = 'dirt';
+                world[`${x},${groundLevel + 2}`] = 'dirt';
+                world[`${x},${groundLevel + 3}`] = 'stone';
+                
+                // Simple terrain features
+                if (x % 5 === 0 && x > 0) {
+                    // Trees
+                    const treeHeight = 4;
+                    world[`${x},${groundLevel - 1}`] = 'wood';
+                    for (let y = 2; y <= treeHeight; y++) {
+                        world[`${x},${groundLevel - y}`] = 'wood';
+                    }
+                    
+                    // Leaves
+                    for (let lx = -2; lx <= 2; lx++) {
+                        for (let ly = -2; ly <= 0; ly++) {
+                            if (Math.abs(lx) !== 2 || Math.abs(ly) !== 0) {
+                                world[`${x + lx},${groundLevel - treeHeight + ly}`] = 'leaf';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Update inventory display
+        function updateInventory() {
+            const inventoryItems = document.getElementById('inventoryItems');
+            inventoryItems.innerHTML = '';
+            
+            for (const [block, count] of Object.entries(inventory)) {
+                const item = document.createElement('div');
+                item.textContent = `${block}: ${count}`;
+                inventoryItems.appendChild(item);
+            }
+        }
+        
+        // Block selection
+        const blockOptions = document.querySelectorAll('.blockOption');
+        blockOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                blockOptions.forEach(opt => opt.classList.remove('selected'));
+                option.classList.add('selected');
+                player.selectedBlock = option.dataset.block;
+            });
+        });
+        
+        // Controls
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        const jumpBtn = document.getElementById('jumpBtn');
+        
+        leftBtn.addEventListener('touchstart', () => player.velocityX = -MOVEMENT_SPEED);
+        leftBtn.addEventListener('touchend', () => player.velocityX = 0);
+        
+        rightBtn.addEventListener('touchstart', () => player.velocityX = MOVEMENT_SPEED);
+        rightBtn.addEventListener('touchend', () => player.velocityX = 0);
+        
+        jumpBtn.addEventListener('touchstart', () => {
+            if (!player.isJumping) {
+                player.velocityY = JUMP_FORCE;
+                player.isJumping = true;
+            }
+        });
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowLeft':
+                case 'a':
+                    player.velocityX = -MOVEMENT_SPEED;
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                    player.velocityX = MOVEMENT_SPEED;
+                    break;
+                case 'ArrowUp':
+                case 'w':
+                case ' ':
+                    if (!player.isJumping) {
+                        player.velocityY = JUMP_FORCE;
+                        player.isJumping = true;
+                    }
+                    break;
+                case '1':
+                    player.selectedBlock = 'grass';
+                    updateSelectedBlock();
+                    break;
+                case '2':
+                    player.selectedBlock = 'dirt';
+                    updateSelectedBlock();
+                    break;
+                case '3':
+                    player.selectedBlock = 'stone';
+                    updateSelectedBlock();
+                    break;
+                case '4':
+                    player.selectedBlock = 'wood';
+                    updateSelectedBlock();
+                    break;
+                case '5':
+                    player.selectedBlock = 'leaf';
+                    updateSelectedBlock();
+                    break;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if ((e.key === 'ArrowLeft' || e.key === 'a') && player.velocityX < 0) {
+                player.velocityX = 0;
+            }
+            if ((e.key === 'ArrowRight' || e.key === 'd') && player.velocityX > 0) {
+                player.velocityX = 0;
+            }
+        });
+        
+        function updateSelectedBlock() {
+            blockOptions.forEach(opt => opt.classList.remove('selected'));
+            document.querySelector(`.blockOption[data-block="${player.selectedBlock}"]`).classList.add('selected');
+        }
+        
+        // Mouse/touch controls for placing/removing blocks
+        canvas.addEventListener('click', handleBlockInteraction);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleBlockInteraction(e.touches[0]);
+        }, { passive: false });
+        
+        function handleBlockInteraction(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Convert mouse position to grid coordinates
+            const gridX = Math.floor(mouseX / BLOCK_SIZE);
+            const gridY = Math.floor(mouseY / BLOCK_SIZE);
+            
+            // Check if click is near player to prevent placing blocks inside yourself
+            const playerGridX = Math.floor(player.x / BLOCK_SIZE);
+            const playerGridY = Math.floor(player.y / BLOCK_SIZE);
+            
+            if (Math.abs(gridX - playerGridX) < 2 && Math.abs(gridY - playerGridY) < 3) {
+                return; // Too close to player
+            }
+            
+            const blockKey = `${gridX},${gridY}`;
+            
+            if (world[blockKey]) {
+                // Remove block
+                const blockType = world[blockKey];
+                inventory[blockType]++;
+                delete world[blockKey];
+            } else {
+                // Place block
+                if (inventory[player.selectedBlock] > 0) {
+                    world[blockKey] = player.selectedBlock;
+                    inventory[player.selectedBlock]--;
+                }
+            }
+            
+            updateInventory();
+        }
+        
+        // Collision detection
+        function checkCollision(x, y) {
+            // Check player bounds
+            const playerLeft = Math.floor(x / BLOCK_SIZE);
+            const playerRight = Math.floor((x + player.width) / BLOCK_SIZE);
+            const playerTop = Math.floor(y / BLOCK_SIZE);
+            const playerBottom = Math.floor((y + player.height) / BLOCK_SIZE);
+            
+            for (let blockY = playerTop; blockY <= playerBottom; blockY++) {
+                for (let blockX = playerLeft; blockX <= playerRight; blockX++) {
+                    if (world[`${blockX},${blockY}`]) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        
+        // Game loop
+        function gameLoop() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Apply gravity
+            player.velocityY += GRAVITY;
+            
+            // Apply horizontal movement
+            let newX = player.x + player.velocityX;
+            let newY = player.y + player.velocityY;
+            
+            // Check horizontal collision
+            if (player.velocityX !== 0) {
+                if (!checkCollision(newX, player.y)) {
+                    player.x = newX;
+                } else {
+                    // Try smaller steps for smoother collision
+                    const step = player.velocityX > 0 ? 1 : -1;
+                    while (player.velocityX !== 0 && !checkCollision(player.x + step, player.y)) {
+                        player.x += step;
+                        player.velocityX -= step;
+                    }
+                    player.velocityX = 0;
+                }
+            }
+            
+            // Check vertical collision
+            if (player.velocityY !== 0) {
+                if (!checkCollision(player.x, newY)) {
+                    player.y = newY;
+                    player.isJumping = true;
+                } else {
+                    // Try smaller steps for smoother collision
+                    const step = player.velocityY > 0 ? 1 : -1;
+                    while (player.velocityY !== 0 && !checkCollision(player.x, player.y + step)) {
+                        player.y += step;
+                        player.velocityY -= step;
+                    }
+                    
+                    if (player.velocityY > 0) {
+                        player.isJumping = false;
+                    }
+                    player.velocityY = 0;
+                }
+            }
+            
+            // Draw world
+            for (const [key, blockType] of Object.entries(world)) {
+                const [x, y] = key.split(',').map(Number);
+                
+                let color;
+                switch (blockType) {
+                    case 'grass': color = '#5A8F3D'; break;
+                    case 'dirt': color = '#8B5A2B'; break;
+                    case 'stone': color = '#808080'; break;
+                    case 'wood': color = '#8B4513'; break;
+                    case 'leaf': color = '#4F7942'; break;
+                    default: color = '#000000';
+                }
+                
+                ctx.fillStyle = color;
+                ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                
+                // Add some texture
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            }
+            
+            // Draw player
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Draw sky
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Initialize game
+        generateTerrain();
+        updateInventory();
+        gameLoop();
+    </script>
 </body>
 </html>
